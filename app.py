@@ -10,6 +10,7 @@ from supabase import create_client
 
 st.set_page_config(page_title="Video Caption Annotation", layout="wide")
 ANNOTATORS = ("A", "B", "C")
+DISPLAY_NAMES = {"A": "Laurence", "B": "Sophia", "C": "Extra Annotator", "Admin": "Admin"}
 LABELS = ("Matched", "Unmatched", "Not sure")
 
 
@@ -42,14 +43,17 @@ def db_client():
 def authenticate():
     if "role" in st.session_state:
         with st.sidebar:
-            st.write(f"Signed in as **{st.session_state.role}**")
+            st.write(f"Signed in as **{DISPLAY_NAMES[st.session_state.role]}**")
             if st.button("Sign out"):
                 del st.session_state["role"]
                 st.rerun()
         return st.session_state.role
     st.title("Video-Caption Consistency Annotation")
     with st.form("login"):
-        role = st.selectbox("Account", [*ANNOTATORS, "Admin"])
+        role = st.selectbox(
+            "Account", [*ANNOTATORS, "Admin"],
+            format_func=lambda value: DISPLAY_NAMES[value],
+        )
         password = st.text_input("Password", type="password")
         submit = st.form_submit_button("Sign in", type="primary")
     if submit:
@@ -167,12 +171,10 @@ if my.empty:
     st.info("No videos assigned to this annotator.")
     st.stop()
 
-# Review opens only after ALL assigned videos for A, B and C have a saved label.
-assigned_ids = set(index["video_id"].astype(str))
-saved_assigned_ids = set(records["video_id"]) & assigned_ids
-all_complete = len(saved_assigned_ids) == len(assigned_ids)
+# Unlock review as soon as this annotator finishes their own assigned videos.
+my_complete = completed == len(my)
 
-if all_complete:
+if my_complete:
     mode = st.sidebar.radio(
         "Annotation mode",
         ["Review My Not Sure", "Review All My Annotations"],
@@ -193,11 +195,7 @@ if all_complete:
 else:
     mode = "Annotate Remaining"
     choices = my[~my["video_id"].isin(finished)]
-    if choices.empty:
-        st.success("You have finished your assigned videos.")
-        st.info("Review My Not Sure will unlock once all annotators have completed their assignments.")
-        st.stop()
-    st.sidebar.caption("Review opens when A, B, and C have all finished.")
+    st.sidebar.caption("Review unlocks when you finish all your assigned videos.")
 
 selected_id = st.selectbox("Choose a video", choices["video_id"].tolist(), key=f"video_{role}_{mode}")
 item = my.loc[my["video_id"] == selected_id].iloc[0]
